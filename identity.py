@@ -110,6 +110,14 @@ class Schema(object):
         else:
             raise KeyError("User ID not found!")
 
+    def set_auth_discord(self, discord_id, discord_token, commit=True):
+        self.session.query(AuthToken).filter_by(discord_id=discord_id).delete()
+        token = AuthToken(discord_id=discord_id, provider="DISCORD", token=discord_token)
+        self.session.add(token)
+        self.register_event(discord_id, "AUTHENTICATE_DISCORD", commit=False)
+        if commit:
+            self.commit()
+
 
 class User(Base):
     """
