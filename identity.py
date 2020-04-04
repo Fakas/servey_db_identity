@@ -5,6 +5,7 @@ import sqlalchemy.orm
 import sqlalchemy.exc
 import secrets
 from datetime import datetime
+from warnings import warn
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
@@ -23,6 +24,13 @@ class Schema(object):
         session = sqlalchemy.orm.sessionmaker(bind=engine)
         self.session = session()
 
+    def commit(self):
+        try:
+            self.session.commit()
+        except sqlalchemy.exc.StatementError as exception:
+            self.session.rollback()  # To avoid invalidating our session
+            raise exception
+
     def create_user(self, discord_id, generate_token=True, commit=True):
         user = User(discord_id=discord_id)
         self.session.add(user)
@@ -33,7 +41,7 @@ class Schema(object):
 
         if commit:
             try:
-                self.session.commit()
+                self.commit()
             except sqlalchemy.exc.IntegrityError:
                 raise AttributeError(f"User ID \"{discord_id}\" already exists!")
 
@@ -41,7 +49,7 @@ class Schema(object):
         self.session.query(User).filter_by(discord_id=discord_id).delete()
         self.register_event(discord_id, "USER_DELETE", commit=commit)
         if commit:
-            self.session.commit()
+            self.commit()
 
     def create_token(self, discord_id, commit=True):
         token = None
@@ -63,27 +71,44 @@ class Schema(object):
         self.register_event(discord_id, "TOKEN_CREATE", commit=commit)
 
         if commit:
-            self.session.commit()
+            self.commit()
 
     def revoke_token(self, discord_id, commit=True):
         self.session.query(ApiToken).filter_by(discord_id=discord_id).delete()
         self.register_event(discord_id, "TOKEN_REVOKE", commit=commit)
         if commit:
-            self.session.commit()
+            self.commit()
 
     def regenerate_token(self, discord_id, commit=True):
         self.revoke_token(discord_id, commit=False)
         self.create_token(discord_id, commit=False)
 
         if commit:
-            self.session.commit()
+            self.commit()
 
     def register_event(self, discord_id, action, commit=True):
         event = Event(discord_id=discord_id, action=action)
         self.session.add(event)
 
         if commit:
-            self.session.commit()
+            try:
+                self.commit()
+            except sqlalchemy.exc.IntegrityError:
+                warn("Attempting to commit events too quickly!")
+
+    def get_api_user(self, token):
+        results = [result for result in self.session.query(ApiToken).filter_by(token=token)]
+        if results:
+            return results[0].discord_id
+        else:
+            raise KeyError("Token not found!")
+
+    def get_api_token(self, discord_id):
+        results = [result for result in self.session.query(ApiToken).filter_by(discord_id=discord_id)]
+        if results:
+            return results[0].discord_id
+        else:
+            raise KeyError("User ID not found!")
 
 
 class User(Base):
@@ -112,4 +137,15 @@ class ApiToken(Base):
     __tablename__ = "api_tokens"
     discord_id = sqlalchemy.Column(sqlalchemy.String(length=32), nullable=False, primary_key=True)
     token = sqlalchemy.Column(sqlalchemy.String(length=64), nullable=False, primary_key=True)
+    created = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AuthToken(Base):
+    """
+    A single user's external authentication token, such as used in OAuth2.
+    """
+    __tablename__ = "auth_tokens"
+    discord_id = sqlalchemy.Column(sqlalchemy.String(length=32), nullable=False, primary_key=True)
+    provider = sqlalchemy.Column(sqlalchemy.String(length=64), nullable=False, primary_key=True)
+    token = sqlalchemy.Column(sqlalchemy.String(length=1024), nullable=False, primary_key=True)
     created = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.utcnow)
