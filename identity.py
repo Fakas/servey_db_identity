@@ -45,6 +45,11 @@ class Schema(object):
             except sqlalchemy.exc.IntegrityError:
                 raise AttributeError(f"User ID \"{discord_id}\" already exists!")
 
+    def ensure_user(self, discord_id, generate_token=True, commit=True):
+        users = [result for result in self.session.query(User).filter_by(discord_id=discord_id)]
+        if not users:
+            self.create_user(discord_id, generate_token=generate_token, commit=commit)
+
     def delete_user(self, discord_id, commit=True):
         self.session.query(User).filter_by(discord_id=discord_id).delete()
         self.register_event(discord_id, "USER_DELETE", commit=commit)
