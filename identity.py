@@ -52,10 +52,10 @@ class Schema(object):
             self.connect()
             raise exception from None
 
-    def create_user(self, discord_id, generate_token=True, commit=True):
+    def create_user(self, discord_id, generate_token=True, commit=True, ip_addr=None):
         user = User(discord_id=discord_id)
         self.session.add(user)
-        self.register_event(discord_id, "USER_CREATE", commit=commit)
+        self.register_event(discord_id, "USER_CREATE", commit=commit, ip_addr=ip_addr)
 
         if generate_token:
             self.regenerate_token(discord_id=discord_id, commit=False)
@@ -66,18 +66,18 @@ class Schema(object):
             except sqlalchemy.exc.IntegrityError:
                 raise AttributeError(f"User ID \"{discord_id}\" already exists!")
 
-    def ensure_user(self, discord_id, generate_token=True, commit=True):
+    def ensure_user(self, discord_id, generate_token=True, commit=True, ip_addr=None):
         users = [result for result in self.query(User).filter_by(discord_id=discord_id)]
         if not users:
-            self.create_user(discord_id, generate_token=generate_token, commit=commit)
+            self.create_user(discord_id, generate_token=generate_token, commit=commit, ip_addr=ip_addr)
 
-    def delete_user(self, discord_id, commit=True):
+    def delete_user(self, discord_id, commit=True, ip_addr=None):
         self.query(User).filter_by(discord_id=discord_id).delete()
-        self.register_event(discord_id, "USER_DELETE", commit=commit)
+        self.register_event(discord_id, "USER_DELETE", commit=commit, ip_addr=ip_addr)
         if commit:
             self.commit()
 
-    def create_token(self, discord_id, commit=True):
+    def create_token(self, discord_id, commit=True, ip_addr=None):
         token = None
         # Verify token does not already exist
         for _ in range(1, 100):
@@ -94,26 +94,26 @@ class Schema(object):
         api_token = ApiToken(discord_id=discord_id, token=token)
 
         self.session.add(api_token)
-        self.register_event(discord_id, "TOKEN_CREATE", commit=commit)
+        self.register_event(discord_id, "TOKEN_CREATE", commit=commit, ip_addr=ip_addr)
 
         if commit:
             self.commit()
 
-    def revoke_token(self, discord_id, commit=True):
+    def revoke_token(self, discord_id, commit=True, ip_addr=None):
         self.query(ApiToken).filter_by(discord_id=discord_id).delete()
-        self.register_event(discord_id, "TOKEN_REVOKE", commit=commit)
+        self.register_event(discord_id, "TOKEN_REVOKE", commit=commit, ip_addr=ip_addr)
         if commit:
             self.commit()
 
-    def regenerate_token(self, discord_id, commit=True):
-        self.revoke_token(discord_id, commit=False)
-        self.create_token(discord_id, commit=False)
+    def regenerate_token(self, discord_id, commit=True, ip_addr=None):
+        self.revoke_token(discord_id, commit=False, ip_addr=ip_addr)
+        self.create_token(discord_id, commit=False, ip_addr=ip_addr)
 
         if commit:
             self.commit()
 
-    def register_event(self, discord_id, action, commit=True):
-        event = Event(discord_id=discord_id, action=action)
+    def register_event(self, discord_id, action, commit=True, ip_addr=None):
+        event = Event(discord_id=discord_id, action=action, ip_address=ip_addr)
         self.session.add(event)
 
         if commit:
@@ -136,11 +136,11 @@ class Schema(object):
         else:
             raise KeyError("User ID not found!")
 
-    def set_auth_discord(self, discord_id, discord_token, commit=True):
+    def set_auth_discord(self, discord_id, discord_token, commit=True, ip_addr=None):
         self.query(AuthToken).filter_by(discord_id=discord_id).delete()
         token = AuthToken(discord_id=discord_id, provider="DISCORD", token=discord_token)
         self.session.add(token)
-        self.register_event(discord_id, "AUTHENTICATE_DISCORD", commit=False)
+        self.register_event(discord_id, "AUTHENTICATE_DISCORD", commit=False, ip_addr=ip_addr)
         if commit:
             self.commit()
 
@@ -161,6 +161,7 @@ class Event(Base):
     __tablename__ = "events"
     discord_id = sqlalchemy.Column(sqlalchemy.String(length=32), nullable=False, primary_key=True)
     action = sqlalchemy.Column(sqlalchemy.String(length=64), nullable=False, primary_key=True)
+    ip_address = sqlalchemy.Column(sqlalchemy.String(length=40), nullable=True, primary_key=False)
     created = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, primary_key=True, default=datetime.utcnow)
 
 
