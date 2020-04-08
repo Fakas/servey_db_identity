@@ -15,27 +15,38 @@ class Schema(object):
     Identity schema object.
     """
     session = None
+    engine = None
+    connection = None
+    session_maker = None
 
     def __init__(self, database_uri):
-        engine = sqlalchemy.create_engine(database_uri, echo=True)
-        engine.connect()
+        self.engine = sqlalchemy.create_engine(database_uri, echo=True)
+        Base.metadata.create_all(self.engine)
 
-        Base.metadata.create_all(engine)
-        session = sqlalchemy.orm.sessionmaker(bind=engine)
-        self.session = session()
+        self.connect()
+
+    def connect(self):
+        if self.session is not None:
+            self.session.close_all()
+        if self.connection is not None:
+            self.connection.close()
+
+        self.connection = self.engine.connect()
+        session_maker = sqlalchemy.orm.sessionmaker(bind=self.connection)
+        self.session = session_maker()
 
     def commit(self):
         try:
             return self.session.commit()
         except sqlalchemy.exc.StatementError as exception:
-            self.session.rollback()  # To avoid invalidating our session
+            self.connect()
             raise exception from None
 
     def query(self, *args, **kwargs):
         try:
             return self.session.query(*args, **kwargs)
         except sqlalchemy.exc.StatementError as exception:
-            self.session.rollback()  # To avoid invalidating our session
+            self.connect()
             raise exception from None
 
     def create_user(self, discord_id, generate_token=True, commit=True):
