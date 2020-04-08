@@ -118,7 +118,7 @@ class Schema(object):
     def get_api_token(self, discord_id):
         results = [result for result in self.query(ApiToken).filter_by(discord_id=discord_id)]
         if results:
-            return results[0].discord_id
+            return results[0].token
         else:
             raise KeyError("User ID not found!")
 
