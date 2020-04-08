@@ -26,10 +26,17 @@ class Schema(object):
 
     def commit(self):
         try:
-            self.session.commit()
+            return self.session.commit()
         except sqlalchemy.exc.StatementError as exception:
             self.session.rollback()  # To avoid invalidating our session
-            raise exception
+            raise exception from None
+
+    def query(self, *args, **kwargs):
+        try:
+            return self.session.query(*args, **kwargs)
+        except sqlalchemy.exc.StatementError as exception:
+            self.session.rollback()  # To avoid invalidating our session
+            raise exception from None
 
     def create_user(self, discord_id, generate_token=True, commit=True):
         user = User(discord_id=discord_id)
@@ -46,12 +53,12 @@ class Schema(object):
                 raise AttributeError(f"User ID \"{discord_id}\" already exists!")
 
     def ensure_user(self, discord_id, generate_token=True, commit=True):
-        users = [result for result in self.session.query(User).filter_by(discord_id=discord_id)]
+        users = [result for result in self.query(User).filter_by(discord_id=discord_id)]
         if not users:
             self.create_user(discord_id, generate_token=generate_token, commit=commit)
 
     def delete_user(self, discord_id, commit=True):
-        self.session.query(User).filter_by(discord_id=discord_id).delete()
+        self.query(User).filter_by(discord_id=discord_id).delete()
         self.register_event(discord_id, "USER_DELETE", commit=commit)
         if commit:
             self.commit()
@@ -61,7 +68,7 @@ class Schema(object):
         # Verify token does not already exist
         for _ in range(1, 100):
             new_token = secrets.token_urlsafe(nbytes=48)
-            results = [result for result in self.session.query(ApiToken).filter_by(token=new_token)]
+            results = [result for result in self.query(ApiToken).filter_by(token=new_token)]
             if results:
                 # Token already exists, generate a new one
                 continue
@@ -79,7 +86,7 @@ class Schema(object):
             self.commit()
 
     def revoke_token(self, discord_id, commit=True):
-        self.session.query(ApiToken).filter_by(discord_id=discord_id).delete()
+        self.query(ApiToken).filter_by(discord_id=discord_id).delete()
         self.register_event(discord_id, "TOKEN_REVOKE", commit=commit)
         if commit:
             self.commit()
@@ -102,21 +109,21 @@ class Schema(object):
                 warn("Attempting to commit events too quickly!")
 
     def get_api_user(self, token):
-        results = [result for result in self.session.query(ApiToken).filter_by(token=token)]
+        results = [result for result in self.query(ApiToken).filter_by(token=token)]
         if results:
             return results[0].discord_id
         else:
             raise KeyError("Token not found!")
 
     def get_api_token(self, discord_id):
-        results = [result for result in self.session.query(ApiToken).filter_by(discord_id=discord_id)]
+        results = [result for result in self.query(ApiToken).filter_by(discord_id=discord_id)]
         if results:
             return results[0].discord_id
         else:
             raise KeyError("User ID not found!")
 
     def set_auth_discord(self, discord_id, discord_token, commit=True):
-        self.session.query(AuthToken).filter_by(discord_id=discord_id).delete()
+        self.query(AuthToken).filter_by(discord_id=discord_id).delete()
         token = AuthToken(discord_id=discord_id, provider="DISCORD", token=discord_token)
         self.session.add(token)
         self.register_event(discord_id, "AUTHENTICATE_DISCORD", commit=False)
