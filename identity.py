@@ -32,6 +32,7 @@ class Schema(object):
             self.connection.close()
 
         self.connection = self.engine.connect()
+        self.connection.execute("SET SESSION sql_mode='TRADITIONAL'")
         session_maker = sqlalchemy.orm.sessionmaker(bind=self.connection)
         self.session = session_maker()
 
@@ -39,6 +40,7 @@ class Schema(object):
         try:
             return self.session.commit()
         except sqlalchemy.exc.StatementError as exception:
+            self.session.rollback()
             self.connect()
             raise exception from None
 
@@ -46,6 +48,7 @@ class Schema(object):
         try:
             return self.session.query(*args, **kwargs)
         except sqlalchemy.exc.StatementError as exception:
+            self.session.rollback()
             self.connect()
             raise exception from None
 
