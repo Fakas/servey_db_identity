@@ -26,15 +26,18 @@ class Schema(object):
         self.connect()
 
     def connect(self):
-        if self.session is not None:
-            self.session.close_all()
-        if self.connection is not None:
-            self.connection.close()
+        self.close()
 
         self.connection = self.engine.connect()
         self.connection.execute("SET SESSION sql_mode='TRADITIONAL'")
         session_maker = sqlalchemy.orm.sessionmaker(bind=self.connection)
         self.session = session_maker()
+
+    def close(self):
+        if self.session is not None:
+            self.session.close_all()
+        if self.connection is not None:
+            self.connection.close()
 
     def commit(self):
         try:
