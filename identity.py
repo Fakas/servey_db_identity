@@ -20,7 +20,7 @@ class Schema(object):
     session_maker = None
 
     def __init__(self, database_uri):
-        self.engine = sqlalchemy.create_engine(database_uri, echo=True)
+        self.engine = sqlalchemy.create_engine(database_uri, echo=False)
         Base.metadata.create_all(self.engine)
 
         self.connect()
